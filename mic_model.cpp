@@ -82,12 +82,21 @@ int CMicModel::parameter_estimation( vector<int> const & citation_time )
 	//m_mu = 6 + 1.0 * rand() / RAND_MAX;    // generate random value between 0.0 and 2.0;
 	//m_sigma = 1.0 + 0.5 * rand() / RAND_MAX; // generate random value between 0.01 and 1.01;
 
-	m_alpha = 0.01;
-	m_beta = 0.01;
-	m_gamma = 0.01;
+	/*m_alpha = 8;
+	m_beta = .0000001;
+	m_gamma = 6; */
+
+	//Good initial values of alpha, beta, gamma
+	m_alpha = 0.1;
+	m_beta = 0.001;
+	m_gamma = 0.1;
+
+	/*m_alpha = 0.1;
+	m_beta = 0.1;
+	m_gamma = 0.1;*/
 
 	double LL = log_likelihood();
-
+	cout << "Initial LL: "<< LL << "\n";
 	double g_square = 0.0;
 	double delta_alpha;
 	double delta_beta;
@@ -97,25 +106,30 @@ int CMicModel::parameter_estimation( vector<int> const & citation_time )
 	for ( round = 1; round < max_iter; ++round )
 	{
 		gradient_alpha = compute_gradient_alpha();
-		//cout << gradient_alpha;
+		cout << gradient_alpha << "\n";
 		gradient_beta = compute_gradient_beta();
-		//cout << gradient_beta;
+		cout << gradient_beta << "\n";
 		gradient_gamma = compute_gradient_gamma();
-		//cout << gradient_gamma;
+		cout << gradient_gamma  << "\n";
 		hessian_matrix(a_a, b_b, g_g, a_b, a_g, b_g);
+		cout << "hessian" << a_a << b_b << g_g << a_b << a_g << b_g <<"\n";
 		transform_hessian_matrix(a_a, b_b, g_g, a_b, a_g, b_g);
 		delta_alpha = a_a * gradient_alpha + a_b * gradient_beta + a_g * gradient_gamma;//mu_mu * gradient_mu + mu_sigma * gradient_sigma;
 		delta_beta = a_b * gradient_alpha + b_b * gradient_beta + b_g * gradient_gamma;
 		delta_gamma = a_g * gradient_alpha + b_g * gradient_beta + g_g * gradient_gamma;
-
+		cout << "Delta" << delta_alpha << delta_beta << delta_gamma ;
 		// update parameters mu, sigma and lambda
 		line_search( delta_alpha, delta_beta, delta_gamma, LL );
 
+		cout << "After Delta" << delta_alpha << delta_beta << delta_gamma ;
 		// checking convergence
 		g_square = gradient_alpha * gradient_alpha + gradient_beta * gradient_beta + gradient_gamma * gradient_gamma;
 		if ( g_square < g_squre_resolution )
 			break;
+		int flag  = 0;
+		cin >> flag;
 
+		//break;
 		//cout << "log likelihood: " << LL << "\t" << "g_square: " << g_square << endl;
 	}
 
@@ -151,7 +165,7 @@ double CMicModel::log_likelihood()
 		for(int j = 0; j< i; j++){
 			logsum += exp(-m_beta*(m_citations[i] - m_citations[j]));
 		}
-		C += log(m_gamma * exp(-m_beta*m_citations[i]) + logsum);
+		C += log(m_gamma * exp(-m_beta*m_citations[i]) + m_alpha * logsum);
 	}
 	LL = A + B + C;
 	return LL;
@@ -178,9 +192,9 @@ double CMicModel::compute_gradient_alpha( )
 	for(int i = 0; i< m_citations.size(); i++){
 		double logsum = 0.0;
 		for(int j = 0; j< i; j++){
-			logsum += exp(-m_beta*(m_citations[i] - m_citations[j]));
+			logsum += exp(m_beta*(m_citations[j]));
 		}
-		denominator = m_gamma * exp(-m_beta*m_citations[i]) + m_alpha * logsum;
+		denominator = m_gamma + m_alpha * logsum;
 		numerator = logsum;
 		C += numerator / denominator;
 		}
@@ -202,11 +216,11 @@ double CMicModel::compute_gradient_gamma()
 	for(int i = 0; i< m_citations.size(); i++){
 		double logsum = 0.0;
 		for(int j = 0; j< i; j++){
-			logsum += exp(-m_beta*(m_citations[i] - m_citations[j]));
+			logsum += exp(m_beta*(m_citations[j]));
 		}
-		denominator = m_gamma * exp(-m_beta*m_citations[i]) + m_alpha * logsum;
-		numerator = -exp(-m_beta * m_citations[i]);
-		C += numerator / denominator;
+		denominator = m_gamma  + m_alpha * logsum;
+		//numerator = exp(-m_beta * m_citations[i]);
+		C += (1 / denominator);
 	}
 	gradient_gamma = B + C;
 	return gradient_gamma;
@@ -241,13 +255,15 @@ double CMicModel::compute_gradient_beta( )
 		double logsumdenom = 0.0, logsum=0.0;
 		for(int j = 0; j< m_citations[m_citations.size()-1]; j++){
 			//logsumdenom += exp( -m_beta*(m_citations[i] - m_citations[j]));
-			logsum += exp(m_beta * m_citations[j]);//(m_citations[i] - m_citations[j]) * exp( -m_beta*(m_citations[i] - m_citations[j]));
+			logsumdenom += exp(m_beta * m_citations[j]);
+			logsum += exp(m_beta * m_citations[j]) * m_citations[j];
+			//(m_citations[i] - m_citations[j]) * exp( -m_beta*(m_citations[i] - m_citations[j]));
 
 		}
 		//denominator = m_gamma * exp(-m_beta*m_citations[i]) + m_alpha * logsumdenom;
 
 		//numerator = -m_gamma * m_citations[i] * exp(-m_beta * m_citations[i])- m_alpha *logsum;
-		C +=(-m_citations[i] + 1) - (m_gamma / (m_gamma + m_alpha * logsum));
+		C +=(-m_citations[i]) + ((m_alpha * logsum) / (m_gamma + m_alpha * logsumdenom));
 	}
 	gradient_beta = A - B + C;
 	return gradient_beta;
@@ -264,8 +280,10 @@ double CMicModel::compute_alpha_alpha( )
 		for(int j = 0; j< i; j++){
 			sum +=  exp(m_beta*(m_citations[j]));
 		}
+		//cout << "sum" <<sum << "\n";
 		alpha_alpha = alpha_alpha + (sum * sum)/pow(m_gamma + m_alpha * sum, 2);
 	}
+	//cout << alpha_alpha << "Inside the func" << "\n";
 	return -alpha_alpha;
 }
 
@@ -275,14 +293,14 @@ double CMicModel::compute_gamma_gamma( )
 
 	double sum = 0.0;
 
-	for(int i = 0; i< m_citations.size(); i++){
+	for(int i = 0; i < m_citations.size(); i++){
 		sum = 0.0;
 		for(int j = 0; j< i; j++){
 			sum +=  exp( m_beta*(m_citations[j]));
 		}
 		gamma_gamma = 1 /pow((m_gamma + m_alpha * sum), 2);
 	}
-	return gamma_gamma;
+	return -gamma_gamma;
 }
 
 double CMicModel::compute_beta_beta()
@@ -295,7 +313,7 @@ double CMicModel::compute_beta_beta()
 	double C1 = 0.0, C2 = 0.0, C3 = 0.0, C = 0.0;
 	double sumNumerator, sumDenominator;
 
-	A = ((2 * m_gamma * m_T)/pow(m_beta, 2) + (pow(m_T,2) * m_gamma) / m_beta + (2 * m_gamma)/pow(m_beta, 3) ) * exp( -m_beta*m_T);
+	A = ((2 * m_gamma * m_T)/pow(m_beta, 2) + ((pow(m_T,2) * m_gamma) / m_beta) + (2 * m_gamma)/pow(m_beta, 3) ) * exp( -m_beta*m_T);
 	A = A - 2 * m_gamma / pow(m_beta, 3) - 2 * m_alpha * m_citations.size()/pow(m_beta, 3);
 
 	for(int i = 0; i < m_citations.size(); i++){
@@ -305,7 +323,7 @@ double CMicModel::compute_beta_beta()
 	}
 	C = (2 * m_alpha * C1) / pow(m_beta, 3) + (2 * m_alpha * C2) / pow(m_beta, 2) + (m_alpha * C3) / pow(m_beta, 1);
 
-	for(int i = 0; i< m_citations.size(); i++){
+	/*for(int i = 0; i< m_citations.size(); i++){
 		sumNumerator = 0.0;
 		sumDenominator = 0.0;
 		for(int j = 0; j< i; j++){
@@ -313,6 +331,21 @@ double CMicModel::compute_beta_beta()
 			sumNumerator += exp(m_beta*m_citations[j]) * m_citations[j];
 		}
 		B += (m_gamma * m_alpha * sumNumerator) / pow(m_gamma + m_alpha * sumDenominator , 2);
+	}*/
+
+	for(int i = 0; i < m_citations.size(); i++) {
+		B1 = 0.0;
+		B2 = 0.0;
+		B3 = 0.0;
+		for(int j = 0; j < i; j++){
+			B1 += exp(m_beta * m_citations[j]);
+			B2 += m_citations[j] * exp(m_beta * m_citations[j]);
+			B3 += (m_citations[j] * m_citations[j]) * exp(m_beta * m_citations[j]);
+
+		}
+		sumNumerator =  ((m_gamma + m_alpha * B1) * (m_alpha * B3) - pow(m_alpha * B2 , 2));
+		sumDenominator = pow(m_gamma + m_alpha * B1,2);
+		B += sumNumerator / sumDenominator;
 	}
 	beta_beta = A + B + C;
 	return beta_beta;
@@ -330,7 +363,7 @@ double CMicModel::compute_alpha_gamma( )
 		for(int j = 0; j< i; j++){
 			sum +=  exp( m_beta*(m_citations[j]));
 		}
-		alpha_gamma = alpha_gamma +  sum/pow(m_gamma + m_alpha * sum, 2);
+		alpha_gamma = alpha_gamma +  (sum)/pow(m_gamma + m_alpha * sum, 2);
 	}
 	return -alpha_gamma;
 }
@@ -359,11 +392,14 @@ double CMicModel::compute_alpha_beta()
 	double sum = 0.0;
 	for(int i = 0; i< m_citations.size(); i++){
 		double sumDenom = 0.0;
+		double sumNumerator = 0.0;
 		for (int j = 0; j<i; j++){
-			sumDenom +=  m_citations[j] * exp( m_beta * m_citations[j]);
+			sumNumerator +=  m_citations[j] * exp( m_beta * m_citations[j]);
+			sumDenom += exp( m_beta * m_citations[j]);
 		}
 		denominator = pow(m_gamma + m_alpha * sumDenom, 2);
-		numerator = m_gamma * m_alpha *sumDenom ;
+		numerator = (m_gamma + m_alpha * sumDenom) * (sumNumerator) - m_alpha * (sumDenom) * (sumNumerator);
+				//m_gamma * m_alpha *sumDenom ;
 		C = C + numerator / denominator ;
 	}
 
@@ -396,11 +432,11 @@ double CMicModel::compute_gamma_beta()
 			sumDenom +=  exp( m_beta * m_citations[j]);
 		}
 		denominator = pow(m_gamma + m_alpha * sumDenom, 2);
-		numerator = m_citations[i] * m_alpha * sumNumer ;
+		numerator =  m_alpha * sumNumer ;
 		C = C + numerator / denominator ;
 	}
 
-	gamma_beta = A + B + C;
+	gamma_beta = A + B - C;
 	return gamma_beta;
 }
 /*
@@ -514,7 +550,7 @@ void CMicModel::line_search( double delta_alpha, double delta_beta, double delta
 	double old_beta = delta_beta;
 	double old_gamma = delta_gamma;
 	// check the boundary of sigma
-	/*if ( m_alpha + delta_alpha < alpha_min )
+	/*if ( m_beta + delta_alpha < beta_min )
 	{
 		//cout << "boundary check\n";
 		delta_alpha *= sigma_min-m_sigma / delta_alpha;
@@ -530,7 +566,9 @@ void CMicModel::line_search( double delta_alpha, double delta_beta, double delta
 		m_alpha = old_alpha + delta_alpha;
 		m_beta = old_beta + delta_beta;
 		m_gamma = old_gamma + delta_gamma;
+		cout << "a: " << m_alpha << "b: "<< m_beta << "g: "<< m_gamma << "\n";
 		LL = log_likelihood();
+		cout << "LL" << LL << "\n";
 		if ( LL >= old_LL ) return;
 
 		delta_alpha /= 2.0;
